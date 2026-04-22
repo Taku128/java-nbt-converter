@@ -11,5 +11,5 @@ export default defineConfig({
   sourcemap: true,
   target: 'es2022',
   splitting: false,
-  external: ['@taku128/core', 'prismarine-nbt', 'fflate', 'fs', 'node:fs', 'node:fs/promises', 'node:path'],
+  external: ['@taku128/core', 'deepslate', 'fflate', 'fs', 'node:fs', 'node:fs/promises', 'node:path'],
 });

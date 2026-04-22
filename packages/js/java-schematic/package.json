@@ -1,6 +1,6 @@
 {
   "name": "@taku128/java-schematic",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Convert Java Edition schematic formats (.litematic / .schem / .schematic / .nbt) to Java Structure NBT. Browser- and Node-compatible.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -45,10 +45,11 @@
     "structure",
     "deepslate"
   ],
+  "sideEffects": false,
   "dependencies": {
-    "@taku128/core": "^0.1.0",
-    "fflate": "^0.8.2",
-    "prismarine-nbt": "^2.5.0"
+    "@taku128/core": "^0.2.0",
+    "deepslate": "^0.25.1",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
