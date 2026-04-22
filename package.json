@@ -1,0 +1,21 @@
+{
+  "name": "java-nbt-converter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo for Minecraft Java Edition schematic → Java Structure NBT converters (.litematic / .schem / .schematic / .nbt).",
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": [
+    "packages/js/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r --filter './packages/js/*' run build",
+    "test": "pnpm -r --filter './packages/js/*' run test",
+    "dev": "pnpm -r --filter './packages/js/*' run dev"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "typescript": "^5.5.0",
+    "tsup": "^8.3.0"
+  },
+  "license": "MIT"
+}

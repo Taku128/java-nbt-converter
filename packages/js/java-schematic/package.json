@@ -1,0 +1,66 @@
+{
+  "name": "@taku128/java-schematic",
+  "version": "0.1.0",
+  "description": "Convert Java Edition schematic formats (.litematic / .schem / .schematic / .nbt) to Java Structure NBT. Browser- and Node-compatible.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "require": "./dist/node.cjs"
+    }
+  },
+  "bin": {
+    "java-schematic": "./bin/cli.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "node --test test/*.test.mjs",
+    "dev": "tsup --watch"
+  },
+  "keywords": [
+    "minecraft",
+    "java",
+    "nbt",
+    "schematic",
+    "litematic",
+    "litematica",
+    "schem",
+    "worldedit",
+    "sponge",
+    "structure",
+    "deepslate"
+  ],
+  "dependencies": {
+    "@taku128/core": "^0.1.0",
+    "fflate": "^0.8.2",
+    "prismarine-nbt": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT",
+  "author": "Taku128",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Taku128/java-nbt-converter.git",
+    "directory": "packages/js/java-schematic"
+  },
+  "homepage": "https://github.com/Taku128/java-nbt-converter#readme"
+}
