@@ -10,14 +10,26 @@
  *     Regions: {
  *       <regionName>: {
  *         Position: {x, y, z},
- *         Size: {x, y, z},          // signed — negative means reverse direction
+ *         Size: {x, y, z},          // signed — negative size means the player
+ *                                   // anchored the selection at the +max corner
+ *                                   // and dragged toward -min on that axis.
  *         BlockStatePalette: [{Name, Properties}, ...],
- *         BlockStates: Long_Array,  // bit-packed palette indices
- *         TileEntities: [...],
- *         Entities: [...]
+ *         BlockStates: Long_Array,  // bit-packed palette indices in linear order:
+ *                                   //   linearIdx = y*|sx|*|sz| + z*|sx| + x
+ *                                   // where (x, y, z) ∈ [0, |size|) and index 0
+ *                                   // is at the bbox MIN corner (effective origin)
+ *                                   //   bboxMin = Position + (sign<0 ? size+1 : 0)
+ *         TileEntities: [{ x, y, z, ... }]
+ *                                   // (x, y, z) ∈ [0, |size|), local to bboxMin
+ *         Entities: [{ Pos: [x, y, z] (doubles), ... }]
+ *                                   // Pos is in [0, |size|) coordinates, local to bboxMin
  *       }
  *     }
  *   }
+ *
+ * IMPORTANT: A negative size component does NOT mean "iterate backwards from
+ * Position" — it just records the player's selection direction. The on-disk
+ * data is always stored from the bbox min corner outward in +x, +y, +z.
  */
 
 import { parseNbt } from '../nbt-parse.js';
@@ -123,16 +135,20 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     const absSizeZ = Math.abs(size[2]);
     if (absSizeX === 0 || absSizeY === 0 || absSizeZ === 0) continue;
 
-    // Compute region AABB for overall size (account for negative size extents)
-    const rPosX = position[0] + (size[0] < 0 ? size[0] + 1 : 0);
-    const rPosY = position[1] + (size[1] < 0 ? size[1] + 1 : 0);
-    const rPosZ = position[2] + (size[2] < 0 ? size[2] + 1 : 0);
-    if (rPosX < minX) minX = rPosX;
-    if (rPosY < minY) minY = rPosY;
-    if (rPosZ < minZ) minZ = rPosZ;
-    if (rPosX + absSizeX > maxX) maxX = rPosX + absSizeX;
-    if (rPosY + absSizeY > maxY) maxY = rPosY + absSizeY;
-    if (rPosZ + absSizeZ > maxZ) maxZ = rPosZ + absSizeZ;
+    // Effective origin = the bbox MIN corner in world coords. This is where
+    // BlockStates[linearIdx=0] (and TileEntity (0,0,0)) lives. When size is
+    // negative, the player anchored at the +max side, so the min corner is
+    // Position + (size + 1) on that axis; otherwise it equals Position.
+    const effOriginX = position[0] + (size[0] < 0 ? size[0] + 1 : 0);
+    const effOriginY = position[1] + (size[1] < 0 ? size[1] + 1 : 0);
+    const effOriginZ = position[2] + (size[2] < 0 ? size[2] + 1 : 0);
+
+    if (effOriginX < minX) minX = effOriginX;
+    if (effOriginY < minY) minY = effOriginY;
+    if (effOriginZ < minZ) minZ = effOriginZ;
+    if (effOriginX + absSizeX > maxX) maxX = effOriginX + absSizeX;
+    if (effOriginY + absSizeY > maxY) maxY = effOriginY + absSizeY;
+    if (effOriginZ + absSizeZ > maxZ) maxZ = effOriginZ + absSizeZ;
     foundAny = true;
 
     // --- map local palette → global ---
@@ -169,15 +185,18 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
 
     const airGlobalIndex = findAirIndex(outPalette);
 
+    // BlockStates is stored in (y, z, x) linear order starting from the bbox
+    // min corner. Local (x, y, z) ∈ [0, |size|) always map to
+    // (effOrigin + x, effOrigin + y, effOrigin + z) regardless of size sign.
     for (let y = 0; y < absSizeY; y++) {
       for (let z = 0; z < absSizeZ; z++) {
         for (let x = 0; x < absSizeX; x++) {
           const index = y * absSizeX * absSizeZ + z * absSizeX + x;
           const paletteIdx = unpack(longs, index, bitsPerBlock, mask);
 
-          const realX = position[0] + (size[0] < 0 ? -x : x);
-          const realY = position[1] + (size[1] < 0 ? -y : y);
-          const realZ = position[2] + (size[2] < 0 ? -z : z);
+          const realX = effOriginX + x;
+          const realY = effOriginY + y;
+          const realZ = effOriginZ + z;
 
           const gIdx = localToGlobal[paletteIdx];
           if (gIdx === undefined) continue;
@@ -192,16 +211,16 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     }
 
     // --- tile entities: attach NBT to the matching block ---
+    // x/y/z in TileEntities are local to the bbox min corner (same anchor as
+    // the BlockStates array), not to Position.
     const tileEntitiesList = asList(region.TileEntities);
     const tileEntitiesItems =
       (tileEntitiesList?.value as Record<string, NbtNode>[] | undefined) ?? [];
     for (const te of tileEntitiesItems) {
-      // Litematica stores tile-entity coordinates as int x/y/z within the region.
-      const teX = asNumber(te.x) + position[0];
-      const teY = asNumber(te.y) + position[1];
-      const teZ = asNumber(te.z) + position[2];
+      const teX = asNumber(te.x) + effOriginX;
+      const teY = asNumber(te.y) + effOriginY;
+      const teZ = asNumber(te.z) + effOriginZ;
 
-      // Find the block at this position and attach NBT.
       const match = outBlocks.find(
         (b) => b.pos[0] === teX && b.pos[1] === teY && b.pos[2] === teZ,
       );
@@ -211,6 +230,7 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     }
 
     // --- entities: preserve raw NBT, record absolute positions ---
+    // Entity Pos is in [0, |size|) coordinates local to the bbox min corner.
     const entitiesList = asList(region.Entities);
     const entitiesItems =
       (entitiesList?.value as Record<string, NbtNode>[] | undefined) ?? [];
@@ -218,9 +238,9 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
       const posList = asList(ent.Pos);
       const posArr = (posList?.value as number[] | undefined) ?? [];
       if (posArr.length < 3) continue;
-      const ex = posArr[0]!;
-      const ey = posArr[1]!;
-      const ez = posArr[2]!;
+      const ex = posArr[0]! + effOriginX;
+      const ey = posArr[1]! + effOriginY;
+      const ez = posArr[2]! + effOriginZ;
       outEntities.push({
         pos: [ex, ey, ez],
         blockPos: [Math.floor(ex), Math.floor(ey), Math.floor(ez)],
