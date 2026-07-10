@@ -1,6 +1,6 @@
 {
   "name": "@taku128/java-schematic",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Convert Java Edition schematic formats (.litematic / .schem / .nbt) to Java Structure NBT. Browser- and Node-compatible. Classic MCEdit .schematic and Bedrock .mcstructure are detected and rejected with descriptive errors.",
   "type": "module",
   "main": "./dist/index.cjs",
