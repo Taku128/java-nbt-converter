@@ -69,15 +69,40 @@ function classify(rootName: string, keys: Set<string>): DetectedFormat {
   return 'unknown';
 }
 
+// 解凍後サイズの上限 (128 MiB)。gzip 爆弾 (小さなアップロード → 巨大な展開) で
+// ブラウザのメモリと後段のパースループを食い潰されるのを防ぐ。
+const MAX_DECOMPRESSED_BYTES = 134_217_728;
+
 function decompress(buf: Uint8Array): Uint8Array {
   if (buf.length < 2) return buf;
   const b0 = buf[0]!;
   const b1 = buf[1]!;
-  if (b0 === 0x1f && b1 === 0x8b) return gunzipSync(buf);
+  if (b0 === 0x1f && b1 === 0x8b) {
+    // gzip footer の ISIZE (展開後サイズ mod 2^32) を先に見て、展開前に弾く
+    if (buf.length >= 4) {
+      const dv = new DataView(buf.buffer, buf.byteOffset + buf.length - 4, 4);
+      const isize = dv.getUint32(0, true);
+      if (isize > MAX_DECOMPRESSED_BYTES) {
+        throw new Error(
+          `decompressed size ${isize} exceeds the supported maximum (${MAX_DECOMPRESSED_BYTES} bytes)`,
+        );
+      }
+    }
+    return assertSize(gunzipSync(buf));
+  }
   if (b0 === 0x78 && (b1 === 0x01 || b1 === 0x9c || b1 === 0xda)) {
-    return inflateSync(buf);
+    return assertSize(inflateSync(buf));
   }
   return buf;
+}
+
+function assertSize(out: Uint8Array): Uint8Array {
+  if (out.length > MAX_DECOMPRESSED_BYTES) {
+    throw new Error(
+      `decompressed size ${out.length} exceeds the supported maximum (${MAX_DECOMPRESSED_BYTES} bytes)`,
+    );
+  }
+  return out;
 }
 
 /** Lightweight cursor-based NBT scanner. Reads only root-level names. */

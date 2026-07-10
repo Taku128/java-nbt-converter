@@ -57,7 +57,13 @@ test("負サイズ region: TileEntity も bbox min アンカー", async () => {
   ]);
   const st = readStructure((await convertBuffer(bytes)).nbt);
   assert.ok(st.blocks.get("0,1,0")?.startsWith("minecraft:chest"));
-  assert.ok(st.nbtByPos.has("0,1,0"), "TileEntity が bbox min 基準の座標に付いていない");
+  const nbt = st.nbtByPos.get("0,1,0");
+  assert.ok(nbt, "TileEntity が bbox min 基準の座標に付いていない");
+  assert.ok(Array.isArray(nbt.Items), "TE の実データが保持されていない");
+  // vanilla structure の block nbt は座標を持たない (Go 版と同挙動)
+  assert.equal(nbt.x, undefined);
+  assert.equal(nbt.y, undefined);
+  assert.equal(nbt.z, undefined);
 });
 
 test("multi-region: palette 統合と座標リベース", async () => {
@@ -127,7 +133,7 @@ test("region 内の palette 重複エントリは 1 つに統合される", asyn
   assert.equal(st.blocks.get("1,0,0"), "minecraft:stone");
 });
 
-test("DoS: 細工の巨大 Size は体積上限で拒否される", async () => {
+test("DoS: 細工の巨大 Size は合計体積上限で拒否される (ブロックループ前)", async () => {
   const bytes = buildLitematic([
     {
       name: "evil",
@@ -137,7 +143,106 @@ test("DoS: 細工の巨大 Size は体積上限で拒否される", async () => 
       blockStatesOverride: [0n], // データはほぼ空のまま Size だけ巨大
     },
   ]);
-  await assert.rejects(convertBuffer(bytes), /exceeds the supported maximum/);
+  await assert.rejects(convertBuffer(bytes), /total region volume .* exceeds/);
+});
+
+test("DoS: 小さな region の大量並びも合計体積で拒否される (multi-region 迂回の防止)", async () => {
+  // 1 region あたりは上限内でも、合計で 512^3 を超えれば Size ヘッダの事前検査で
+  // 即座に弾かれる (どの region のブロックループにも入らない = テストも即時)。
+  const regions = Array.from({ length: 9 }, (_, i) => ({
+    name: `r${i}`,
+    position: [i * 600, 0, 0],
+    size: [512, 512, 64], // 各 1677 万 × 9 = 1.5 億 > 上限
+    palette: [AIR, STONE],
+    blockStatesOverride: [0n],
+  }));
+  await assert.rejects(convertBuffer(buildLitematic(regions)), /total region volume .* exceeds/);
+});
+
+test("DoS: gzip 爆弾は ISIZE の事前検査で展開前に拒否される", async () => {
+  const bytes = buildLitematic([
+    {
+      name: "main",
+      position: [0, 0, 0],
+      size: [1, 1, 1],
+      palette: [AIR, STONE],
+      indexAt: () => 1,
+    },
+  ]);
+  // gzip footer の ISIZE (展開後サイズ) を偽装して巨大宣言にする
+  const forged = new Uint8Array(bytes);
+  const dv = new DataView(forged.buffer, forged.byteOffset + forged.length - 4, 4);
+  dv.setUint32(0, 0xf0000000, true);
+  await assert.rejects(convertBuffer(forged), /decompressed size .* exceeds/);
+});
+
+test("受理側境界: 100 万ブロック級の正規 litematic は上限に引っかからない", async () => {
+  // false positive ガード: 128×64×128 (= 104 万) の全 stone region が変換できること
+  const [w, h, l] = [128, 64, 128];
+  const bytes = buildLitematic([
+    {
+      name: "big",
+      position: [0, 0, 0],
+      size: [w, h, l],
+      palette: [AIR, STONE],
+      indexAt: () => 1,
+    },
+  ]);
+  const out = await convertBuffer(bytes);
+  assert.equal(out.blockCount, w * h * l);
+  assert.deepEqual(out.size, [w, h, l]);
+});
+
+test("bit-pack が long 境界を跨ぐ palette (3 bits/block) を正しく unpack する", async () => {
+  // palette 5 エントリ → 3 bits/block。3x3x3 = 27 エントリで index 21 が
+  // bit 63..65 に載り、litematica 固有の「エントリが long を跨ぐ」詰め方を踏む。
+  const P = [
+    AIR,
+    STONE,
+    REDSTONE,
+    { Name: "minecraft:glass" },
+    { Name: "minecraft:oak_planks" },
+  ];
+  // linear index = y*9 + z*3 + x → palette index = (linear % 4) + 1 (air を使わない)
+  const bytes = buildLitematic([
+    {
+      name: "main",
+      position: [0, 0, 0],
+      size: [3, 3, 3],
+      palette: P,
+      indexAt: (x, y, z) => ((y * 9 + z * 3 + x) % 4) + 1,
+    },
+  ]);
+  const out = await convertBuffer(bytes);
+  assert.equal(out.blockCount, 27);
+  const st = readStructure(out.nbt);
+  // 全 27 ブロックを仕様導出の期待値と突き合わせ (跨ぎ index 21 = (0,2,1) を含む)
+  for (let y = 0; y < 3; y++)
+    for (let z = 0; z < 3; z++)
+      for (let x = 0; x < 3; x++) {
+        const expected = P[((y * 9 + z * 3 + x) % 4) + 1].Name;
+        assert.equal(st.blocks.get(`${x},${y},${z}`), expected, `mismatch at ${x},${y},${z}`);
+      }
+});
+
+test("litematic の Entities が位置リベース込みで保持される", async () => {
+  const { T } = await import("./tools/nbt-writer.mjs");
+  const bytes = buildLitematic([
+    {
+      name: "main",
+      position: [2, 5, 2],
+      size: [3, -4, 3], // bbox min = [2,2,2] — エンティティも min アンカー
+      palette: [AIR, STONE],
+      indexAt: () => 1,
+      entities: [{ pos: [0.5, 1.0, 2.5], id: "minecraft:pig", extra: { CustomName: T.string("ぶた") } }],
+    },
+  ]);
+  const st = readStructure((await convertBuffer(bytes)).nbt);
+  assert.equal(st.entities.length, 1);
+  const ent = st.entities[0];
+  assert.deepEqual(ent.pos, [0.5, 1.0, 2.5]); // 単一 region はリベース後も local 座標のまま
+  assert.equal(ent.nbt.id, "minecraft:pig");
+  assert.equal(ent.nbt.CustomName, "ぶた");
 });
 
 test("DoS: Size に対して BlockStates が短すぎるファイルは拒否される", async () => {

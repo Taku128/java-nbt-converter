@@ -101,6 +101,22 @@ test("DoS: 細工の巨大 palette index は拒否される", async () => {
   await assert.rejects(convertBuffer(bytes), /palette index/);
 });
 
+test("varint の複数バイト経路: palette index 200 (2 バイト) を正しく decode する", async () => {
+  // index ≥ 128 で varint が 2 バイトになる。中〜大型の WorldEdit コピーで普通に発生。
+  const out = await convertBuffer(
+    buildSchemV2({
+      width: 1,
+      height: 1,
+      length: 1,
+      palette: { "minecraft:air": 0, "minecraft:diamond_block": 200 },
+      indices: [200],
+    }),
+  );
+  const st = readStructure(out.nbt);
+  assert.equal(st.blocks.get("0,0,0"), "minecraft:diamond_block");
+  assert.equal(st.blocks.size, 1);
+});
+
 test("DataVersion がソースから引き継がれる", async () => {
   const out = await convertBuffer(buildSchemV2({ ...LAYOUT, dataVersion: 3700 }));
   const st = readStructure(out.nbt);

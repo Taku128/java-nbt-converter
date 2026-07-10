@@ -76,7 +76,11 @@ export function buildLitematic(regions, { dataVersion = 3953 } = {}) {
           T.compound({ x: T.int(te.x), y: T.int(te.y), z: T.int(te.z), ...(te.extra ?? {}) }),
         ),
       ),
-      Entities: T.list([]),
+      Entities: T.list(
+        (r.entities ?? []).map((e) =>
+          T.compound({ Pos: T.list(e.pos.map(T.double)), id: T.string(e.id), ...(e.extra ?? {}) }),
+        ),
+      ),
       PendingBlockTicks: T.list([]),
       PendingFluidTicks: T.list([]),
     });

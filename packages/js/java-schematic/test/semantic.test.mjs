@@ -38,5 +38,11 @@ test("エレベーター litematic: JS 出力が Go 期待値と semantic 等価
   }
   assert.equal(mismatches, 0, `${mismatches} 箇所で state 不一致`);
 
+  // TileEntity: 位置と nbt 中身 (Items/sign text 等) まで Go 期待値と深比較する
   assert.equal(js.nbtByPos.size, expected.nbtByPos.size, "TileEntity 数不一致");
+  for (const [key, expNbt] of expected.nbtByPos) {
+    assert.deepEqual(js.nbtByPos.get(key), expNbt, `TileEntity nbt 不一致 at ${key}`);
+  }
+
+  assert.deepEqual(js.entities, expected.entities, "entities 不一致");
 });
