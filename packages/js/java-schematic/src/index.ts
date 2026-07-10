@@ -44,22 +44,30 @@ export async function convertBuffer(buffer: Uint8Array | ArrayBuffer): Promise<C
       'Input is a Bedrock .mcstructure file. Use @taku128/mcstructure to convert Bedrock structures.',
     );
   }
+  if (sniff.format === 'schematic') {
+    throw new Error(
+      'Classic MCEdit .schematic files (numeric block IDs) are not supported. ' +
+        'Re-save the build as a Sponge .schem (WorldEdit //schem save) or .litematic and convert that instead.',
+    );
+  }
   if (sniff.format === 'unknown') {
     throw new Error(
-      `Could not identify NBT format. Root keys: [${Array.from(sniff.rootKeys).join(', ')}]`,
+      `Could not identify NBT format. Root keys: [${describeRootKeys(sniff.rootKeys)}]`,
     );
   }
 
-  const sf: StandardFormat = await (async () => {
-    switch (sniff.format) {
-      case 'litematic':
-        return parseLitematica(sniff.raw);
-      case 'schem':
-        return parseWorldEditSchem(sniff.raw);
-      case 'structure':
-        return parseJavaStructure(sniff.raw);
-    }
-  })() as StandardFormat;
+  let sf: StandardFormat;
+  switch (sniff.format) {
+    case 'litematic':
+      sf = await parseLitematica(sniff.raw);
+      break;
+    case 'schem':
+      sf = await parseWorldEditSchem(sniff.raw);
+      break;
+    case 'structure':
+      sf = await parseJavaStructure(sniff.raw);
+      break;
+  }
 
   const nbt = encodeStructureNbt(sf);
   return {
@@ -69,4 +77,19 @@ export async function convertBuffer(buffer: Uint8Array | ArrayBuffer): Promise<C
     paletteCount: sf.palette.length,
     format: sniff.format,
   };
+}
+
+/**
+ * Root keys can be misread garbage when the input is not big-endian NBT at
+ * all (e.g. a corrupt file), so keep error messages printable and bounded.
+ */
+function describeRootKeys(keys: Set<string>): string {
+  const shown = Array.from(keys)
+    .slice(0, 8)
+    .map((k) => {
+      const printable = k.length <= 32 && [...k].every((ch) => ch >= ' ' && ch <= '~');
+      return printable ? k : `<unprintable key: ${k.length} chars>`;
+    });
+  const extra = keys.size - shown.length;
+  return shown.join(', ') + (extra > 0 ? `, +${extra} more` : '');
 }

@@ -8,6 +8,7 @@
 
 import { parseNbt } from '../nbt-parse.js';
 import type { StandardFormat } from '../types.js';
+import { DEFAULT_DATA_VERSION } from '../constants.js';
 
 interface NbtNode {
   type: string;
@@ -99,7 +100,7 @@ export async function parseJavaStructure(raw: Uint8Array): Promise<StandardForma
       nbt: e.nbt!,
     }));
 
-  const dataVersion = asNumber(rootCompound.DataVersion) || 3953;
+  const dataVersion = asNumber(rootCompound.DataVersion) || DEFAULT_DATA_VERSION;
 
   return {
     size,

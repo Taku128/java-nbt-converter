@@ -26,11 +26,23 @@ export interface SniffResult {
 
 export function sniffFormat(buffer: Uint8Array): SniffResult {
   const raw = decompress(buffer);
-  const info = scanRootKeys(raw);
+  const info = scanRootKeys(raw, false);
   const rootName = info?.rootName ?? '';
   const rootKeys = info?.keys ?? new Set<string>();
 
   const format = classify(rootName, rootKeys);
+
+  if (format === 'unknown') {
+    // Bedrock NBT is little-endian, so the big-endian scan above reads
+    // garbage lengths and never reaches the mcstructure keys. Retry in LE,
+    // but only trust the result when it classifies as a Bedrock structure —
+    // every Java format is big-endian.
+    const le = scanRootKeys(raw, true);
+    if (le && classify(le.rootName, le.keys) === 'bedrock-mcstructure') {
+      return { format: 'bedrock-mcstructure', raw, rootName: le.rootName, rootKeys: le.keys };
+    }
+  }
+
   return { format, raw, rootName, rootKeys };
 }
 
@@ -73,7 +85,10 @@ class Cursor {
   pos = 0;
   view: DataView;
   decoder = new TextDecoder('utf-8');
-  constructor(public data: Uint8Array) {
+  constructor(
+    public data: Uint8Array,
+    private littleEndian = false,
+  ) {
     this.view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   }
   byte(): number | null {
@@ -82,13 +97,13 @@ class Cursor {
   }
   int32(): number | null {
     if (this.pos + 4 > this.data.length) return null;
-    const v = this.view.getInt32(this.pos, false);
+    const v = this.view.getInt32(this.pos, this.littleEndian);
     this.pos += 4;
     return v;
   }
   ushort(): number | null {
     if (this.pos + 2 > this.data.length) return null;
-    const v = this.view.getUint16(this.pos, false);
+    const v = this.view.getUint16(this.pos, this.littleEndian);
     this.pos += 2;
     return v;
   }
@@ -109,8 +124,11 @@ class Cursor {
   }
 }
 
-function scanRootKeys(data: Uint8Array): { rootName: string; keys: Set<string> } | null {
-  const c = new Cursor(data);
+function scanRootKeys(
+  data: Uint8Array,
+  littleEndian: boolean,
+): { rootName: string; keys: Set<string> } | null {
+  const c = new Cursor(data, littleEndian);
   const tagId = c.byte();
   if (tagId !== 10) return null;
   const rootName = c.str();

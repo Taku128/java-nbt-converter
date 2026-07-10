@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Build + smoke test
+    name: Build + typecheck + test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,4 +19,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
-      - run: node packages/js/java-schematic/test/smoke.test.mjs
+      - run: pnpm -r --filter './packages/js/*' run typecheck
+      - run: pnpm run test

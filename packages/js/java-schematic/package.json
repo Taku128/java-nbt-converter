@@ -1,7 +1,7 @@
 {
   "name": "@taku128/java-schematic",
   "version": "0.2.1",
-  "description": "Convert Java Edition schematic formats (.litematic / .schem / .schematic / .nbt) to Java Structure NBT. Browser- and Node-compatible.",
+  "description": "Convert Java Edition schematic formats (.litematic / .schem / .nbt) to Java Structure NBT. Browser- and Node-compatible. Classic MCEdit .schematic and Bedrock .mcstructure are detected and rejected with descriptive errors.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -30,6 +30,7 @@
   "scripts": {
     "build": "tsup",
     "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
     "dev": "tsup --watch"
   },
   "keywords": [
@@ -47,7 +48,6 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@taku128/core": "^0.2.0",
     "deepslate": "^0.25.1",
     "fflate": "^0.8.2"
   },
