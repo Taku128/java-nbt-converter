@@ -19,7 +19,7 @@
     }
   },
   "bin": {
-    "java-schematic": "./bin/cli.js"
+    "java-schematic": "bin/cli.js"
   },
   "files": [
     "dist/",
@@ -31,7 +31,8 @@
     "build": "tsup",
     "test": "node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "pretest": "npm run build"
   },
   "keywords": [
     "minecraft",
@@ -60,7 +61,7 @@
   "author": "Taku128",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Taku128/java-nbt-converter.git",
+    "url": "git+https://github.com/Taku128/java-nbt-converter.git",
     "directory": "packages/js/java-schematic"
   },
   "homepage": "https://github.com/Taku128/java-nbt-converter#readme"

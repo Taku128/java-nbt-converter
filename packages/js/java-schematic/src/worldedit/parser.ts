@@ -73,6 +73,7 @@ export async function parseWorldEditSchem(raw: Uint8Array): Promise<StandardForm
 
   // v3: content wrapped in "Schematic" child
   const wrapped = asCompound(root.Schematic);
+  const isV3 = !!wrapped;
   if (wrapped) root = wrapped;
 
   const width = asNumber(root.Width);
@@ -105,6 +106,13 @@ export async function parseWorldEditSchem(raw: Uint8Array): Promise<StandardForm
   }
 
   const maxIndex = paletteEntries.reduce((m, p) => Math.max(m, p.index), -1);
+  // 細工ファイルの palette index (例: 2^31-1) での巨大配列確保 = OOM を防ぐ。
+  // 正規のファイルでは palette 数 = 使用 block state 数なので 65535 で十分。
+  if (maxIndex > MAX_PALETTE_INDEX) {
+    throw new Error(
+      `.schem: palette index ${maxIndex} exceeds the supported maximum (${MAX_PALETTE_INDEX}); refusing to parse`,
+    );
+  }
   const outPalette: StandardPalette[] = new Array(maxIndex + 1)
     .fill(0)
     .map(() => ({ Name: 'minecraft:air', Properties: {} }));
@@ -150,7 +158,10 @@ export async function parseWorldEditSchem(raw: Uint8Array): Promise<StandardForm
     const [bx, by, bz] = [posArr[0]!, posArr[1]!, posArr[2]!];
     const match = outBlocks.find((b) => b.pos[0] === bx && b.pos[1] === by && b.pos[2] === bz);
     if (match) {
-      match.nbt = { type: 'compound', value: be };
+      // v3 は {Pos, Id, Data} で実データが Data にネストされる仕様。vanilla structure の
+      // block nbt (実データ直下 + 小文字 id) に展開する。v2 は実データがエントリ直下に
+      // インラインなので従来どおり素通し。
+      match.nbt = { type: 'compound', value: isV3 ? expandV3Entry(be) : be };
     }
   }
 
@@ -167,7 +178,7 @@ export async function parseWorldEditSchem(raw: Uint8Array): Promise<StandardForm
     outEntities.push({
       pos: [ex, ey, ez],
       blockPos: [Math.floor(ex), Math.floor(ey), Math.floor(ez)],
-      nbt: { type: 'compound', value: ent },
+      nbt: { type: 'compound', value: isV3 ? expandV3Entry(ent) : ent },
     });
   }
 
@@ -186,6 +197,20 @@ export async function parseWorldEditSchem(raw: Uint8Array): Promise<StandardForm
 }
 
 // ---------------------------------------------------------------------------
+
+const MAX_PALETTE_INDEX = 65_535;
+
+/**
+ * Sponge v3 の BlockEntity/Entity エントリ {Pos, Id, Data} を vanilla 形式に展開する:
+ * Data の中身を直下に持ち上げ、Id を小文字 id で付与する (Pos は座標側で消費済み)。
+ */
+function expandV3Entry(entry: Record<string, NbtNode>): Record<string, NbtNode> {
+  const data = asCompound(entry.Data);
+  const out: Record<string, NbtNode> = data ? { ...data } : {};
+  const id = asString(entry.Id);
+  if (id && !('id' in out)) out.id = { type: 'string', value: id };
+  return out;
+}
 
 function parseBlockStateString(s: string): { name: string; properties: Record<string, string> } {
   const bracket = s.indexOf('[');

@@ -113,6 +113,22 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
   const regionsCompound = asCompound(root.Regions);
   if (!regionsCompound) throw new Error('.litematic: missing Regions compound');
 
+  // 事前に全 region の Size ヘッダだけで合計体積を検査する (ブロックループ前)。
+  // 細工ファイル (巨大 Size 単発 / 高圧縮 region の大量並び) のループ爆発を、
+  // 正規の大型建築 (単一 region 256^3 超) を誤って弾かずに防ぐ。
+  let totalVolume = 0;
+  for (const regionNode of Object.values(regionsCompound)) {
+    const region = asCompound(regionNode);
+    if (!region) continue;
+    const [sx, sy, sz] = xyz(region.Size);
+    totalVolume += Math.abs(sx) * Math.abs(sy) * Math.abs(sz);
+  }
+  if (totalVolume > MAX_TOTAL_VOLUME) {
+    throw new Error(
+      `.litematic: total region volume ${totalVolume} exceeds the supported maximum (${MAX_TOTAL_VOLUME}); refusing to parse`,
+    );
+  }
+
   // Unified output palette across all regions
   const outPalette: StandardPalette[] = [];
   const paletteIndexByKey = new Map<string, number>();
@@ -135,6 +151,7 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     const absSizeY = Math.abs(size[1]);
     const absSizeZ = Math.abs(size[2]);
     if (absSizeX === 0 || absSizeY === 0 || absSizeZ === 0) continue;
+    const volume = absSizeX * absSizeY * absSizeZ;
 
     // Effective origin = the bbox MIN corner in world coords. This is where
     // BlockStates[linearIdx=0] (and TileEntity (0,0,0)) lives. When size is
@@ -184,6 +201,15 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     const bitsPerBlock = Math.max(2, bitLength(paletteCount - 1));
     const mask = (1n << BigInt(bitsPerBlock)) - 1n;
 
+    // Size と BlockStates 長の整合チェック: 正規のファイルでは BlockStates は
+    // 体積ぶんのエントリを必ず持つ。足りない場合は破損か細工 (巨大 Size + 空データ)。
+    const capacity = Math.floor((longs.length * 64) / bitsPerBlock);
+    if (volume > capacity) {
+      throw new Error(
+        `.litematic: BlockStates holds ${capacity} entries but region size requires ${volume} (corrupt or crafted file)`,
+      );
+    }
+
     const airGlobalIndex = findAirIndex(outPalette);
 
     // BlockStates is stored in (y, z, x) linear order starting from the bbox
@@ -226,7 +252,10 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
         (b) => b.pos[0] === teX && b.pos[1] === teY && b.pos[2] === teZ,
       );
       if (match) {
-        match.nbt = { type: 'compound', value: te };
+        // vanilla structure の block nbt は座標を持たない (座標は blocks[].pos が正)。
+        // litematic 由来の x/y/z を残すと Go 版出力・vanilla 慣行と食い違う。
+        const { x: _x, y: _y, z: _z, ...teData } = te;
+        match.nbt = { type: 'compound', value: teData };
       }
     }
 
@@ -274,6 +303,10 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     sourceFormat: 'litematic',
   };
 }
+
+// 全 region 合計の体積上限 (512^3 ≒ 1.3 億ブロック)。正規の大型建築 litematic を
+// 受理しつつ、パース時間の天井 (実測 ~50ns/block → 数秒台) を保証する。
+const MAX_TOTAL_VOLUME = 134_217_728;
 
 // ---------------------------------------------------------------------------
 // bit-unpacking helpers
