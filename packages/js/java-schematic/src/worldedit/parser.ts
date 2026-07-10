@@ -19,6 +19,7 @@
 
 import { parseNbt } from '../nbt-parse.js';
 import type { StandardFormat, StandardPalette, StandardBlock, StandardEntity } from '../types.js';
+import { DEFAULT_DATA_VERSION } from '../constants.js';
 
 type NbtNode = { type: string; value: unknown };
 
@@ -77,7 +78,7 @@ export async function parseWorldEditSchem(raw: Uint8Array): Promise<StandardForm
   const width = asNumber(root.Width);
   const height = asNumber(root.Height);
   const length = asNumber(root.Length);
-  const dataVersion = asNumber(root.DataVersion) || 3953;
+  const dataVersion = asNumber(root.DataVersion) || DEFAULT_DATA_VERSION;
 
   const offsetArr = readIntArray(root.Offset);
   const offsetX = offsetArr[0] ?? 0;

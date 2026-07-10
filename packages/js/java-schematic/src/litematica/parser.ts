@@ -34,6 +34,7 @@
 
 import { parseNbt } from '../nbt-parse.js';
 import type { StandardFormat, StandardPalette, StandardBlock, StandardEntity } from '../types.js';
+import { DEFAULT_DATA_VERSION } from '../constants.js';
 
 type NbtNode = { type: string; value: unknown };
 
@@ -107,7 +108,7 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
   const root = asCompound(parsed);
   if (!root) throw new Error('.litematic: root is not a compound');
 
-  const dataVersion = asNumber(root.MinecraftDataVersion) || 3953;
+  const dataVersion = asNumber(root.MinecraftDataVersion) || DEFAULT_DATA_VERSION;
 
   const regionsCompound = asCompound(root.Regions);
   if (!regionsCompound) throw new Error('.litematic: missing Regions compound');
