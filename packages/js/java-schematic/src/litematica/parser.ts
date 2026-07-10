@@ -136,6 +136,14 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     const absSizeZ = Math.abs(size[2]);
     if (absSizeX === 0 || absSizeY === 0 || absSizeZ === 0) continue;
 
+    // 細工ファイルの巨大 Size (例: 2000^3 = 10^10 回ループ) でのブラウザハング防止。
+    const volume = absSizeX * absSizeY * absSizeZ;
+    if (volume > MAX_REGION_VOLUME) {
+      throw new Error(
+        `.litematic: region volume ${volume} exceeds the supported maximum (${MAX_REGION_VOLUME}); refusing to parse`,
+      );
+    }
+
     // Effective origin = the bbox MIN corner in world coords. This is where
     // BlockStates[linearIdx=0] (and TileEntity (0,0,0)) lives. When size is
     // negative, the player anchored at the +max side, so the min corner is
@@ -183,6 +191,15 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
 
     const bitsPerBlock = Math.max(2, bitLength(paletteCount - 1));
     const mask = (1n << BigInt(bitsPerBlock)) - 1n;
+
+    // Size と BlockStates 長の整合チェック: 正規のファイルでは BlockStates は
+    // 体積ぶんのエントリを必ず持つ。足りない場合は破損か細工 (巨大 Size + 空データ)。
+    const capacity = Math.floor((longs.length * 64) / bitsPerBlock);
+    if (volume > capacity) {
+      throw new Error(
+        `.litematic: BlockStates holds ${capacity} entries but region size requires ${volume} (corrupt or crafted file)`,
+      );
+    }
 
     const airGlobalIndex = findAirIndex(outPalette);
 
@@ -274,6 +291,10 @@ export async function parseLitematica(raw: Uint8Array): Promise<StandardFormat> 
     sourceFormat: 'litematic',
   };
 }
+
+// 1 region の体積上限 (256^3)。回路用途の litematic には十分な余裕を持たせつつ、
+// 細工 Size によるループ爆発を防ぐ。
+const MAX_REGION_VOLUME = 16_777_216;
 
 // ---------------------------------------------------------------------------
 // bit-unpacking helpers

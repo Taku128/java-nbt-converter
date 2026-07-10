@@ -19,7 +19,7 @@
     }
   },
   "bin": {
-    "java-schematic": "./bin/cli.js"
+    "java-schematic": "bin/cli.js"
   },
   "files": [
     "dist/",
@@ -60,7 +60,7 @@
   "author": "Taku128",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Taku128/java-nbt-converter.git",
+    "url": "git+https://github.com/Taku128/java-nbt-converter.git",
     "directory": "packages/js/java-schematic"
   },
   "homepage": "https://github.com/Taku128/java-nbt-converter#readme"
